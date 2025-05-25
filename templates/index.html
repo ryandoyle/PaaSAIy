@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaaSAIy</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .app-item {
+            transition: all 0.3s ease-out;
+        }
+        .app-item.deleting {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+        .modal {
+            transition: opacity 0.3s ease-out;
+        }
+        .modal.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .modal-content {
+            transform: translateY(0);
+            transition: transform 0.3s ease-out;
+        }
+        .modal.hidden .modal-content {
+            transform: translateY(20px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Modal -->
+    <div id="successModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="modal-content bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-2xl font-semibold text-gray-800">Application Created!</h3>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <p class="text-gray-600">Your application is ready to use. You can access it at:</p>
+                <div class="flex items-center space-x-2 bg-gray-100 p-3 rounded-lg">
+                    <a id="modalAppLink" href="#" class="text-blue-500 hover:text-blue-600 font-mono flex-1"></a>
+                    <button onclick="copyToClipboard()" class="text-gray-500 hover:text-gray-600" title="Copy URL">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button onclick="closeModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                        Close
+                    </button>
+                    <a id="modalRunLink" href="#" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200">
+                        Run Application
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center mb-8 text-gray-800">PaaSAIy</h1>
+        <div class="max-w-4xl mx-auto">
+            <!-- Prompt Section -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">Describe Your Application</h2>
+                <form id="promptForm" class="space-y-4">
+                    <div class="space-y-2">
+                        <label for="prompt" class="block text-sm font-medium text-gray-700">What would you like your application to do?</label>
+                        <textarea
+                            id="prompt"
+                            name="prompt"
+                            rows="4"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Example: Create a program that calculates the Fibonacci sequence up to n numbers and displays them in a formatted table."
+                        ></textarea>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-200">
+                        Generate Application
+                    </button>
+                </form>
+            </div>
+
+            <!-- Registered Apps Section -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-700">Registered Applications</h2>
+                {% if apps %}
+                    <div class="space-y-4">
+                        {% for app in apps %}
+                            <div id="app-{{ app.route }}" class="app-item border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition duration-200">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <a href="/app/{{ app.route }}" class="text-blue-500 hover:text-blue-600 font-mono">{{ app.route }}</a>
+                                        <p class="text-gray-600 mt-2">{{ app.prompt }}</p>
+                                        <p class="text-sm text-gray-500 mt-2">Created: {{ app.created_at }}</p>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <button onclick="copyToClipboard('/app/{{ app.route }}')" class="text-gray-500 hover:text-gray-600" title="Copy URL">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                            </svg>
+                                        </button>
+                                        <button onclick="deleteApp('{{ app.route }}')" class="text-red-500 hover:text-red-600" title="Delete application">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-gray-500 text-center py-4">No applications registered yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const promptForm = document.getElementById('promptForm');
+        const promptInput = document.getElementById('prompt');
+        const modal = document.getElementById('successModal');
+        const modalAppLink = document.getElementById('modalAppLink');
+        const modalRunLink = document.getElementById('modalRunLink');
+
+        function showModal(route) {
+            modalAppLink.href = `/app/${route}`;
+            modalAppLink.textContent = `/app/${route}`;
+            modalRunLink.href = `/app/${route}`;
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+        }
+
+        promptForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const prompt = promptInput.value.trim();
+            
+            if (!prompt) {
+                alert('Please enter a description of your application');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('prompt', prompt);
+
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Clear the form
+                    promptInput.value = '';
+                    
+                    // Show the modal
+                    showModal(data.route);
+                    
+                    // Reload the page after a delay to show the new app in the list
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        });
+
+        function copyToClipboard(text) {
+            const fullUrl = window.location.origin + text;
+            navigator.clipboard.writeText(fullUrl).then(() => {
+                alert('Link copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+            });
+        }
+
+        async function deleteApp(route) {
+            const appElement = document.getElementById(`app-${route}`);
+            appElement.classList.add('deleting');
+
+            try {
+                const response = await fetch(`/app/${route}/delete`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Wait for the animation to complete before removing the element
+                    setTimeout(() => {
+                        appElement.remove();
+                        
+                        // If this was the last app, show the "no apps" message
+                        const appsContainer = document.querySelector('.space-y-4');
+                        if (appsContainer && !appsContainer.children.length) {
+                            appsContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No applications registered yet.</p>';
+                        }
+                    }, 300);
+                } else {
+                    appElement.classList.remove('deleting');
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                appElement.classList.remove('deleting');
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
