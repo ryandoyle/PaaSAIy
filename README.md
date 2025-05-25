@@ -27,7 +27,7 @@ OPENAI_API_KEY=your_api_key_here
 python app.py
 ```
 
-4. Open your browser and navigate to `http://localhost:5000`
+4. Open your browser and navigate to `http://localhost:3000`
 
 ## Usage
 

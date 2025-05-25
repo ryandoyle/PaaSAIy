@@ -3,6 +3,7 @@ import random
 import string
 import subprocess
 import tempfile
+import json
 from datetime import datetime
 
 from flask import Flask, render_template, request, jsonify
@@ -37,6 +38,145 @@ class App(db.Model):
             'prompt': self.prompt,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
         }
+
+class ExecutionHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    app_id = db.Column(db.Integer, db.ForeignKey('app.id'), nullable=False)
+    code = db.Column(db.Text, nullable=False)
+    output = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    app = db.relationship('App', backref=db.backref('execution_history', lazy=True))
+
+class AppExecutor:
+    def __init__(self, app_entry):
+        self.app_entry = app_entry
+        self.generated_code = None
+        self.temp_path = None
+
+    def generate_code(self):
+        """Generate Python code using OpenAI."""
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": 
+            """You are a Python expert. 
+            Generate a complete, runnable Python application based on the user's prompt. 
+            The code should be well-documented and follow best practices. 
+            It must only return the raw python script that can be copied and pasted into a file and run. 
+            Do not return any markdown formatting.
+            
+            Important: Any user inputs or configuration values should be read from environment variables using os.getenv() and will 
+            pe prefixed with AIPAAS_. 
+            Do not use input() or hardcoded values.
+            Example: If the user asks for a number use number = os.getenv('AIPAAS_NUMBER')"""
+            },
+                {"role": "user", "content": self.app_entry.prompt}
+            ]
+        )
+        self.generated_code = response.choices[0].message.content
+        return self.generated_code
+
+    def create_temp_file(self):
+        """Create a temporary file with the generated code."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
+            temp_file.write(self.generated_code)
+            self.temp_path = temp_file.name
+        return self.temp_path
+
+    def cleanup(self):
+        """Clean up temporary files."""
+        if self.temp_path and os.path.exists(self.temp_path):
+            os.unlink(self.temp_path)
+
+    def execute(self, env_vars=None):
+        """Execute the generated code with the given environment variables."""
+        if env_vars is None:
+            env_vars = {}
+
+        try:
+            # Create temporary file if not already created
+            if not self.temp_path:
+                self.create_temp_file()
+
+            # Run the code in a subprocess
+            result = subprocess.run(
+                ['python3', self.temp_path],
+                capture_output=True,
+                text=True,
+                env=env_vars,
+                timeout=30  # 30 second timeout
+            )
+
+            # Store execution history
+            output = result.stdout if result.returncode == 0 else result.stderr
+            history = ExecutionHistory(
+                app_id=self.app_entry.id,
+                code=self.generated_code,
+                output=output
+            )
+            db.session.add(history)
+            db.session.commit()
+
+            return {
+                'success': result.returncode == 0,
+                'output': output,
+                'error': result.stderr if result.returncode != 0 else None
+            }
+
+        except subprocess.TimeoutExpired:
+            output = 'Error: Application execution timed out after 30 seconds'
+            history = ExecutionHistory(
+                app_id=self.app_entry.id,
+                code=self.generated_code,
+                output=output
+            )
+            db.session.add(history)
+            db.session.commit()
+            return {
+                'success': False,
+                'output': output,
+                'error': output
+            }
+        except Exception as e:
+            output = f'Error executing application: {str(e)}'
+            history = ExecutionHistory(
+                app_id=self.app_entry.id,
+                code=self.generated_code,
+                output=output
+            )
+            db.session.add(history)
+            db.session.commit()
+            return {
+                'success': False,
+                'output': output,
+                'error': str(e)
+            }
+        finally:
+            self.cleanup()
+
+    def detect_content_type(self, output):
+        """Detect the content type of the output."""
+        content_type = 'text/plain'
+        
+        # Try to detect JSON
+        try:
+            json.loads(output)
+            content_type = 'application/json'
+        except:
+            # Try to detect HTML
+            if output.strip().startswith('<!DOCTYPE') or output.strip().startswith('<html'):
+                content_type = 'text/html'
+            # Try to detect XML
+            elif output.strip().startswith('<?xml') or output.strip().startswith('<root'):
+                content_type = 'application/xml'
+            # Try to detect CSV
+            elif ',' in output and '\n' in output and len(output.split('\n')[0].split(',')) > 1:
+                content_type = 'text/csv'
+            # Try to detect markdown
+            elif any(marker in output for marker in ['# ', '## ', '### ', '* ', '- ']):
+                content_type = 'text/markdown'
+
+        return content_type
 
 # Create database tables
 with app.app_context():
@@ -96,7 +236,7 @@ def register_app():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/app/<route>', methods=['GET', 'POST'])
+@app.route('/app/<route>', methods=['GET'])
 def run_app(route):
     try:
         # Get the app entry from the database
@@ -104,79 +244,69 @@ def run_app(route):
         if not app_entry:
             return jsonify({'error': 'Application not found'}), 404
 
-        if request.method == 'POST':
-            try:
-                # Generate code using OpenAI
-                response = openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": """You are a Python expert. Generate a complete, runnable Python application based on the user's prompt. The code should be well-documented and follow best practices. It must only return the raw python script that can be copied and pasted into a file and run. Do not return any markdown formatting.
-Important: Any user inputs or configuration values should be read from environment variables using os.getenv() and will pe prefixed with AIPAAS_. Do not use input() or hardcoded values.
-Example: If the user asks for a number use number = os.getenv('AIPAAS_NUMBER')"""},
-                        {"role": "user", "content": app_entry.prompt}
-                    ]
-                )
-                generated_code = response.choices[0].message.content
+        # Render the app template
+        return render_template('app.html', route=route, prompt=app_entry.prompt)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-                # Create a temporary file to store the generated code
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
-                    temp_file.write(generated_code)
-                    temp_path = temp_file.name
+@app.route('/app/<route>/execute', methods=['GET'])
+def execute_app(route):
+    try:
+        # Get the app entry from the database
+        app_entry = App.query.filter_by(route=route).first()
+        if not app_entry:
+            return jsonify({'error': 'Application not found'}), 404
 
-                try:
-                    # Prepare environment variables for the subprocess
-                    env = {} # os.environ.copy()
-                    for key, value in request.args.items():
-                        env[f'AIPAAS_{key.upper()}'] = value
+        try:
+            # Create executor and run the app
+            executor = AppExecutor(app_entry)
+            executor.generate_code()
+            
+            # Prepare environment variables
+            env = {}
+            for key, value in request.args.items():
+                env[f'AIPAAS_{key.upper()}'] = value
 
-                    # Run the code in a subprocess
-                    result = subprocess.run(
-                        ['python3', temp_path],
-                        capture_output=True,
-                        text=True,
-                        env=env,
-                        timeout=30  # 30 second timeout
-                    )
+            result = executor.execute(env)
 
-                    # Clean up the temporary file
-                    os.unlink(temp_path)
-
-                    # Check if there was an error
-                    if result.returncode != 0:
-                        return jsonify({
-                            'code': generated_code,
-                            'output': f'Error executing application:\n{result.stderr}'
-                        })
-
-                    # Return the output
-                    output = result.stdout or 'Application executed successfully.'
-                    return jsonify({
-                        'code': generated_code,
-                        'output': output
-                    })
-
-                except subprocess.TimeoutExpired:
-                    os.unlink(temp_path)
-                    return jsonify({
-                        'code': generated_code,
-                        'output': 'Error: Application execution timed out after 30 seconds'
-                    })
-                except Exception as e:
-                    os.unlink(temp_path)
-                    return jsonify({
-                        'code': generated_code,
-                        'output': f'Error executing application: {str(e)}'
-                    })
-
-            except Exception as e:
+            if not result['success']:
                 return jsonify({
-                    'error': f'Error generating code: {str(e)}',
-                    'code': None,
-                    'output': None
-                }), 500
-        else:
-            # For GET requests, render the app template
-            return render_template('app.html', route=route, prompt=app_entry.prompt)
+                    'code': executor.generated_code,
+                    'output': result['error']
+                })
+
+            return jsonify({
+                'code': executor.generated_code,
+                'output': result['output']
+            })
+
+        except Exception as e:
+            return jsonify({
+                'error': f'Error generating code: {str(e)}',
+                'code': None,
+                'output': None
+            }), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/app/<route>/history', methods=['GET'])
+def get_execution_history(route):
+    try:
+        # Get the app entry from the database
+        app_entry = App.query.filter_by(route=route).first()
+        if not app_entry:
+            return jsonify({'error': 'Application not found'}), 404
+
+        # Get execution history, ordered by most recent first
+        history = ExecutionHistory.query.filter_by(app_id=app_entry.id).order_by(ExecutionHistory.created_at.desc()).all()
+        
+        return jsonify({
+            'history': [{
+                'code': entry.code,
+                'output': entry.output,
+                'created_at': entry.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            } for entry in history]
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -214,5 +344,37 @@ def update_prompt(route):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/app/<route>/run', methods=['GET'])
+def run_app_output(route):
+    try:
+        # Get the app entry from the database
+        app_entry = App.query.filter_by(route=route).first()
+        if not app_entry:
+            return jsonify({'error': 'Application not found'}), 404
+
+        try:
+            # Create executor and run the app
+            executor = AppExecutor(app_entry)
+            executor.generate_code()
+            
+            # Prepare environment variables
+            env = {}
+            for key, value in request.args.items():
+                env[f'AIPAAS_{key.upper()}'] = value
+
+            result = executor.execute(env)
+
+            if not result['success']:
+                return result['error'], 500, {'Content-Type': 'text/plain'}
+
+            # Detect content type and return output
+            content_type = executor.detect_content_type(result['output'])
+            return result['output'], 200, {'Content-Type': content_type}
+
+        except Exception as e:
+            return str(e), 500, {'Content-Type': 'text/plain'}
+    except Exception as e:
+        return str(e), 500, {'Content-Type': 'text/plain'}
+
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True, port=3000) 

@@ -5,6 +5,112 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Application</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        /* Custom styles for code blocks */
+        .code-block {
+            position: relative;
+            margin: 1em 0;
+        }
+        .code-block pre {
+            margin: 0;
+            border-radius: 0.375rem;
+        }
+        .code-block .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2d2d2d;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border-top-left-radius: 0.375rem;
+            border-top-right-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+        .code-block .code-content {
+            border-bottom-left-radius: 0.375rem;
+            border-bottom-right-radius: 0.375rem;
+        }
+        .code-block .code-content pre {
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+        }
+        .app-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .run-link {
+            padding: 0.5rem 1rem;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .run-link:hover {
+            background-color: #45a049;
+        }
+        /* Tooltip styles */
+        [data-tooltip] {
+            position: relative;
+        }
+        [data-tooltip]:before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.5rem 1rem;
+            background-color: #333;
+            color: white;
+            font-size: 0.875rem;
+            border-radius: 4px;
+            white-space: normal;
+            width: max-content;
+            max-width: 300px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            z-index: 10;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        [data-tooltip]:after {
+            content: '';
+            position: absolute;
+            bottom: calc(100% - 5px);
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            z-index: 10;
+        }
+        [data-tooltip]:hover:before,
+        [data-tooltip]:hover:after {
+            opacity: 1;
+            visibility: visible;
+        }
+        /* Ensure tooltip stays within viewport */
+        @media (max-width: 640px) {
+            [data-tooltip]:before {
+                left: auto;
+                right: 0;
+                transform: none;
+            }
+            [data-tooltip]:after {
+                left: auto;
+                right: 20px;
+                transform: none;
+            }
+        }
+    </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div class="container mx-auto px-4 py-8">
@@ -63,7 +169,10 @@
                     <button id="addParam" class="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add Parameter</button>
                 </div>
 
-                <button id="runApp" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">Run Application</button>
+                <div class="flex justify-between items-center">
+                    <button id="runApp" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">Run Application</button>
+                    <a id="directRunLink" href="/app/{{ route }}/run" target="_blank" class="ml-2 bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 inline-block" data-tooltip="Runs the application in a new window. Use this link in your scripts/automation">Direct Run</a>
+                </div>
             </div>
 
             <div id="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6 hidden">
@@ -73,16 +182,46 @@
 
             <div id="code" class="bg-white rounded-lg shadow-lg p-6 mb-6 hidden">
                 <h2 class="text-xl font-semibold mb-4">Generated Code</h2>
-                <pre id="codeContent" class="bg-gray-100 p-4 rounded overflow-x-auto"></pre>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Python</span>
+                    </div>
+                    <div class="code-content">
+                        <pre><code id="codeContent" class="language-python"></code></pre>
+                    </div>
+                </div>
             </div>
 
             <div id="output" class="bg-white rounded-lg shadow-lg p-6 hidden">
                 <h2 class="text-xl font-semibold mb-4">Output</h2>
                 <pre id="outputContent" class="bg-gray-100 p-4 rounded overflow-x-auto"></pre>
             </div>
+
+            <!-- Debug Section -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold">Debug Information</h2>
+                    <button id="toggleDebug" class="text-blue-500 hover:text-blue-600 flex items-center space-x-1">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                        <span>Show</span>
+                    </button>
+                </div>
+                <div id="debugContent" class="hidden">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-medium mb-2">Execution History</h3>
+                        <div id="executionHistory" class="space-y-4">
+                            <!-- History items will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const addParamBtn = document.getElementById('addParam');
@@ -101,6 +240,90 @@
             const promptEdit = document.getElementById('promptEdit');
             const promptInput = document.getElementById('promptInput');
             const deleteAppBtn = document.getElementById('deleteApp');
+            const toggleDebugBtn = document.getElementById('toggleDebug');
+            const debugContent = document.getElementById('debugContent');
+            const executionHistory = document.getElementById('executionHistory');
+
+            // Helper function to highlight code
+            function highlightCode(element) {
+                if (element) {
+                    Prism.highlightElement(element);
+                }
+            }
+
+            // Toggle debug section
+            toggleDebugBtn.addEventListener('click', async () => {
+                if (debugContent.classList.contains('hidden')) {
+                    try {
+                        // Fetch execution history
+                        const historyResponse = await fetch(window.location.pathname + '/history');
+                        const historyData = await historyResponse.json();
+                        
+                        if (historyResponse.ok) {
+                            executionHistory.innerHTML = historyData.history.map((entry, index) => `
+                                <div class="border border-gray-200 rounded-lg p-4">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <h4 class="font-medium">Execution at ${entry.created_at}</h4>
+                                        <button class="toggle-code text-blue-500 hover:text-blue-600 flex items-center space-x-1" data-index="${index}">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                            </svg>
+                                            <span>Show Code</span>
+                                        </button>
+                                    </div>
+                                    <div class="mb-2">
+                                        <h5 class="text-sm font-medium text-gray-600 mb-1">Output:</h5>
+                                        <pre class="bg-gray-100 p-2 rounded text-sm overflow-x-auto">${entry.output}</pre>
+                                    </div>
+                                    <div id="code-${index}" class="code-section hidden">
+                                        <h5 class="text-sm font-medium text-gray-600 mb-1">Code:</h5>
+                                        <div class="code-block">
+                                            <div class="code-header">
+                                                <span>Python</span>
+                                            </div>
+                                            <div class="code-content">
+                                                <pre><code class="language-python">${entry.code}</code></pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('');
+
+                            // Add click handlers for code toggles
+                            executionHistory.querySelectorAll('.toggle-code').forEach(button => {
+                                button.addEventListener('click', () => {
+                                    const index = button.dataset.index;
+                                    const codeSection = document.getElementById(`code-${index}`);
+                                    const isHidden = codeSection.classList.contains('hidden');
+                                    
+                                    codeSection.classList.toggle('hidden');
+                                    button.querySelector('span').textContent = isHidden ? 'Hide Code' : 'Show Code';
+                                    button.querySelector('svg').classList.toggle('rotate-180');
+                                    
+                                    if (isHidden) {
+                                        // Highlight code when it becomes visible
+                                        const codeElement = codeSection.querySelector('code.language-python');
+                                        if (codeElement) {
+                                            Prism.highlightElement(codeElement);
+                                        }
+                                    }
+                                });
+                            });
+                        }
+
+                        debugContent.classList.remove('hidden');
+                        toggleDebugBtn.querySelector('span').textContent = 'Hide';
+                        toggleDebugBtn.querySelector('svg').classList.add('rotate-180');
+                    } catch (error) {
+                        errorDiv.classList.remove('hidden');
+                        errorMessage.textContent = error.message;
+                    }
+                } else {
+                    debugContent.classList.add('hidden');
+                    toggleDebugBtn.querySelector('span').textContent = 'Show';
+                    toggleDebugBtn.querySelector('svg').classList.remove('rotate-180');
+                }
+            });
 
             // Delete application
             deleteAppBtn.addEventListener('click', async () => {
@@ -181,14 +404,42 @@
                     <button class="remove-param bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600">×</button>
                 `;
                 queryParamsContainer.appendChild(row);
+                updateDirectRunLink();
             });
 
             // Remove parameter row
             queryParamsContainer.addEventListener('click', function(e) {
                 if (e.target.classList.contains('remove-param')) {
                     e.target.parentElement.remove();
+                    updateDirectRunLink();
                 }
             });
+
+            // Update direct run link when parameters change
+            queryParamsContainer.addEventListener('input', function(e) {
+                if (e.target.classList.contains('param-name') || e.target.classList.contains('param-value')) {
+                    updateDirectRunLink();
+                }
+            });
+
+            // Function to update direct run link with current parameters
+            function updateDirectRunLink() {
+                const params = {};
+                document.querySelectorAll('.query-param-row').forEach(row => {
+                    const name = row.querySelector('.param-name').value.trim();
+                    const value = row.querySelector('.param-value').value.trim();
+                    if (name && value) {
+                        params[name] = value;
+                    }
+                });
+
+                const url = new URL(`/app/${window.location.pathname.split('/').pop()}/run`, window.location.origin);
+                Object.entries(params).forEach(([key, value]) => {
+                    url.searchParams.append(key, value);
+                });
+
+                document.getElementById('directRunLink').href = url.toString();
+            }
 
             // Run application
             runAppBtn.addEventListener('click', async function() {
@@ -207,14 +458,14 @@
                 });
 
                 // Build URL with query parameters
-                const url = new URL(`/app/${window.location.pathname.split('/').pop()}`, window.location.origin);
+                const url = new URL(`/app/${window.location.pathname.split('/').pop()}/execute`, window.location.origin);
                 Object.entries(params).forEach(([key, value]) => {
                     url.searchParams.append(key, value);
                 });
 
                 try {
                     const response = await fetch(url, {
-                        method: 'POST',
+                        method: 'GET',
                         headers: {
                             'Content-Type': 'application/json'
                         }
@@ -225,6 +476,7 @@
                         if (data.code) {
                             codeDiv.classList.remove('hidden');
                             codeContent.textContent = data.code;
+                            highlightCode(codeContent);
                         }
                         
                         if (data.output) {
