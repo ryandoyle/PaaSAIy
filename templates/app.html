@@ -251,6 +251,61 @@
                 }
             }
 
+            // Helper function to detect content type
+            function detectContentType(text) {
+                // Try to detect JSON
+                try {
+                    JSON.parse(text);
+                    return 'application/json';
+                } catch {
+                    // Try to detect HTML
+                    if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+                        return 'text/html';
+                    }
+                    // Try to detect XML
+                    else if (text.trim().startsWith('<?xml') || text.trim().startsWith('<root')) {
+                        return 'application/xml';
+                    }
+                    // Try to detect CSV
+                    else if (text.includes(',') && text.includes('\n') && text.split('\n')[0].split(',').length > 1) {
+                        return 'text/csv';
+                    }
+                    // Try to detect markdown
+                    else if (/# |## |### |\* |- /.test(text)) {
+                        return 'text/markdown';
+                    }
+                }
+                return 'text/plain';
+            }
+
+            // Helper function to escape HTML
+            function escapeHtml(text) {
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return text.replace(/[&<>"']/g, m => map[m]);
+            }
+
+            // Helper function to format output based on content type
+            function formatOutput(text) {
+                const contentType = detectContentType(text);
+                
+                if (contentType === 'application/json') {
+                    try {
+                        const formatted = JSON.stringify(JSON.parse(text), null, 2);
+                        return `<pre class="bg-gray-100 p-2 rounded text-sm overflow-x-auto">${escapeHtml(formatted)}</pre>`;
+                    } catch {
+                        return `<pre class="bg-gray-100 p-2 rounded text-sm overflow-x-auto">${escapeHtml(text)}</pre>`;
+                    }
+                } else {
+                    return `<pre class="bg-gray-100 p-2 rounded text-sm overflow-x-auto">${escapeHtml(text)}</pre>`;
+                }
+            }
+
             // Toggle debug section
             toggleDebugBtn.addEventListener('click', async () => {
                 if (debugContent.classList.contains('hidden')) {
@@ -263,7 +318,7 @@
                             executionHistory.innerHTML = historyData.history.map((entry, index) => `
                                 <div class="border border-gray-200 rounded-lg p-4">
                                     <div class="flex justify-between items-start mb-2">
-                                        <h4 class="font-medium">Execution at ${entry.created_at}</h4>
+                                        <h4 class="font-medium">Execution at ${escapeHtml(entry.created_at)}</h4>
                                         <button class="toggle-code text-blue-500 hover:text-blue-600 flex items-center space-x-1" data-index="${index}">
                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -273,7 +328,7 @@
                                     </div>
                                     <div class="mb-2">
                                         <h5 class="text-sm font-medium text-gray-600 mb-1">Output:</h5>
-                                        <pre class="bg-gray-100 p-2 rounded text-sm overflow-x-auto">${entry.output}</pre>
+                                        ${formatOutput(entry.output)}
                                     </div>
                                     <div id="code-${index}" class="code-section hidden">
                                         <h5 class="text-sm font-medium text-gray-600 mb-1">Code:</h5>
@@ -282,7 +337,7 @@
                                                 <span>Python</span>
                                             </div>
                                             <div class="code-content">
-                                                <pre><code class="language-python">${entry.code}</code></pre>
+                                                <pre><code class="language-python">${escapeHtml(entry.code)}</code></pre>
                                             </div>
                                         </div>
                                     </div>
