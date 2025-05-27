@@ -4,6 +4,7 @@ import string
 import subprocess
 import tempfile
 import json
+import shutil
 from datetime import datetime
 
 from flask import Flask, render_template, request, jsonify
@@ -55,18 +56,18 @@ class AppExecutor:
         self.python_cmd = self._get_python_command()
 
     def _get_python_command(self):
-        """Determine which Python command to use (python or python3)."""
-        try:
-            # Try python3 first
-            subprocess.run(['python3', '--version'], capture_output=True, check=True)
+        """Determine which Python command to use (python or python3) by checking PATH."""
+        # Try python3 first
+        python3_path = shutil.which('python3')
+        if python3_path:
             return 'python3'
-        except (subprocess.SubprocessError, FileNotFoundError):
-            try:
-                # Fall back to python
-                subprocess.run(['python', '--version'], capture_output=True, check=True)
-                return 'python'
-            except (subprocess.SubprocessError, FileNotFoundError):
-                raise RuntimeError("Neither 'python' nor 'python3' command is available")
+            
+        # Fall back to python
+        python_path = shutil.which('python')
+        if python_path:
+            return 'python'
+            
+        raise RuntimeError("Neither 'python' nor 'python3' command is available in PATH")
 
     def generate_code(self):
         """Generate Python code using OpenAI."""
