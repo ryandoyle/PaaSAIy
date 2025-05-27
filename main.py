@@ -52,6 +52,21 @@ class AppExecutor:
         self.app_entry = app_entry
         self.generated_code = None
         self.temp_path = None
+        self.python_cmd = self._get_python_command()
+
+    def _get_python_command(self):
+        """Determine which Python command to use (python or python3)."""
+        try:
+            # Try python3 first
+            subprocess.run(['python3', '--version'], capture_output=True, check=True)
+            return 'python3'
+        except (subprocess.SubprocessError, FileNotFoundError):
+            try:
+                # Fall back to python
+                subprocess.run(['python', '--version'], capture_output=True, check=True)
+                return 'python'
+            except (subprocess.SubprocessError, FileNotFoundError):
+                raise RuntimeError("Neither 'python' nor 'python3' command is available")
 
     def generate_code(self):
         """Generate Python code using OpenAI."""
@@ -100,7 +115,7 @@ class AppExecutor:
 
             # Run the code in a subprocess
             result = subprocess.run(
-                ['python3', self.temp_path],
+                [self.python_cmd, self.temp_path],
                 capture_output=True,
                 text=True,
                 env=env_vars,
