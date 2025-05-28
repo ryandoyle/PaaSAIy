@@ -94,6 +94,9 @@ class AppExecutor:
         """Execute the generated code with the given environment variables."""
         if env_vars is None:
             env_vars = {}
+            
+        # Include the system PATH in the environment variables
+        env_vars.update({'PATH': os.environ.get('PATH', '')})
 
         try:
             # Create temporary file if not already created
