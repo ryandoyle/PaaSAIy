@@ -53,21 +53,7 @@ class AppExecutor:
         self.app_entry = app_entry
         self.generated_code = None
         self.temp_path = None
-        self.python_cmd = self._get_python_command()
-
-    def _get_python_command(self):
-        """Determine which Python command to use (python or python3) by checking PATH."""
-        # Try python3 first
-        python3_path = shutil.which('python3')
-        if python3_path:
-            return 'python3'
-            
-        # Fall back to python
-        python_path = shutil.which('python')
-        if python_path:
-            return 'python'
-            
-        raise RuntimeError("Neither 'python' nor 'python3' command is available in PATH")
+        self.python_cmd = 'python'
 
     def generate_code(self):
         """Generate Python code using OpenAI."""
