@@ -317,8 +317,13 @@ def get_execution_history(route):
 
 @app.route('/app/<route>/delete', methods=['POST'])
 def delete_app(route):
-    app_entry = App.query.filter_by(route=route).first_or_404()
     try:
+        app_entry = App.query.filter_by(route=route).first_or_404()
+        
+        # Delete all associated execution history records first
+        ExecutionHistory.query.filter_by(app_id=app_entry.id).delete()
+        
+        # Now delete the app entry
         db.session.delete(app_entry)
         db.session.commit()
         return jsonify({'message': 'Application deleted successfully'})
