@@ -68,7 +68,8 @@ class AppExecutor:
             Do not return any markdown formatting.
             
             Important: Any user inputs or configuration values should be read from environment variables using os.getenv() and will 
-            pe prefixed with AIPAAS_. 
+            pe prefixed with AIPAAS_.
+            Make sure all enviroment variables are uppercase in the generated code.
             Do not use input() or hardcoded values.
             Example: If the user asks for a number use number = os.getenv('AIPAAS_NUMBER')"""
             },
