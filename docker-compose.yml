@@ -10,6 +10,8 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     restart: unless-stopped
+    labels:
+      - "traefik.http.middlewares.paasaiy-auth.basicauth.users=paas:$2y$05$iI4UdXILQHa0V5DBXuE0BudXRSTb4cFpcqVLFTMjHW6wo/HYaXBK6"
 
 volumes:
   sqlite_data:
